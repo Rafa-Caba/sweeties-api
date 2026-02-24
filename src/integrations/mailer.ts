@@ -20,11 +20,40 @@ function getTransporter() {
         port,
         secure: port === 465,
         auth: { user, pass },
+
+        // STARTTLS support if you ever switch to 587
+        requireTLS: port === 587,
+
+        // Helps some providers with TLS/SNI
+        tls: { servername: host },
+
+        // Prevent long hangs in production (Railway timeouts)
+        connectionTimeout: 15_000,
+        greetingTimeout: 15_000,
+        socketTimeout: 20_000,
     });
 }
 
 function fromEmail(): string {
     return process.env.SMTP_FROM || env.SWEETIES_ADMIN_EMAIL;
+}
+
+function orderSummaryText(order: OrderDTO): string {
+    const itemsText = (order.items || [])
+        .map((it) => `${it.quantity}x ${it.name} ($${Number(it.price).toFixed(2)} c/u)`)
+        .join("\n");
+
+    return [
+        `ID: ${order.id}`,
+        `Cliente: ${order.name}`,
+        `Email: ${order.email}`,
+        `Tel: ${order.phone}`,
+        `Total: $${Number(order.total).toFixed(2)}`,
+        `Estado: ${order.status}`,
+        "",
+        "Items:",
+        itemsText || "(sin items)",
+    ].join("\n");
 }
 
 export async function sendOrderConfirmationToGuest(order: OrderDTO): Promise<void> {
@@ -38,7 +67,8 @@ export async function sendOrderConfirmationToGuest(order: OrderDTO): Promise<voi
         from: fromEmail(),
         to: order.email,
         subject: `Sweeties - Pedido recibido (${order.id})`,
-        text: `Hola ${order.name}!\n\nTu pedido fue recibido.\nID: ${order.id}\nTotal: $${order.total}\nEstado: ${order.status}\n\nGracias!`,
+        replyTo: env.SWEETIES_ADMIN_EMAIL,
+        text: `Hola ${order.name}!\n\nTu pedido fue recibido.\n\n${orderSummaryText(order)}\n\nGracias!`,
     });
 }
 
@@ -53,6 +83,7 @@ export async function sendOrderConfirmationToAdmin(order: OrderDTO): Promise<voi
         from: fromEmail(),
         to: env.SWEETIES_ADMIN_EMAIL,
         subject: `Nuevo pedido Sweeties (${order.id})`,
-        text: `Nuevo pedido:\nID: ${order.id}\nCliente: ${order.name}\nEmail: ${order.email}\nTel: ${order.phone}\nTotal: $${order.total}\nEstado: ${order.status}`,
+        replyTo: order.email,
+        text: `Nuevo pedido:\n\n${orderSummaryText(order)}`,
     });
 }

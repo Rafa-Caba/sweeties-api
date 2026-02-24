@@ -7,5 +7,7 @@ export type DashboardStatsDTO = {
     ordersShipped: number;
     ordersDelivered: number;
 
+    failedEmailsCount: number;
+
     totalRevenue: number;
 };

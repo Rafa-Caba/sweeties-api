@@ -3,9 +3,7 @@ import * as Service from "./service";
 
 export async function createOrder(req: Request, res: Response): Promise<void> {
     const dto = (req as any).validated.body;
-
     const saved = await Service.createOrder(dto);
-
     res.status(201).json({ orderId: saved.id, message: "Pedido recibido" });
 }
 
@@ -14,6 +12,12 @@ export async function updateStatus(req: Request, res: Response): Promise<void> {
     const { status } = (req as any).validated.body;
 
     const updated = await Service.updateOrderStatus(id, status);
+    res.json(updated);
+}
+
+export async function retryEmails(req: Request, res: Response): Promise<void> {
+    const { id } = (req as any).validated.params;
+    const updated = await Service.retryOrderEmails(id);
     res.json(updated);
 }
 
@@ -46,10 +50,4 @@ export async function remove(req: Request, res: Response): Promise<void> {
     const { id } = (req as any).validated.params;
     await Service.deleteOrder(id);
     res.json({ message: "Order deleted" });
-}
-
-export async function track(req: Request, res: Response): Promise<void> {
-    const { orderId, email } = (req as any).validated.body;
-    const order = await Service.trackOrder(orderId, email);
-    res.json(order);
 }

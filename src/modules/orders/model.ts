@@ -1,5 +1,5 @@
 import mongoose, { type InferSchemaType } from "mongoose";
-import type { OrderDTO, OrderStatus } from "./types";
+import type { EmailStatus, OrderDTO, OrderStatus } from "./types";
 
 const OrderItemSchema = new mongoose.Schema(
     {
@@ -28,6 +28,18 @@ const OrderSchema = new mongoose.Schema(
             default: "PENDIENTE",
             required: true,
         },
+
+        // Email tracking
+        emailStatus: {
+            type: String,
+            enum: ["PENDING", "SENT", "FAILED"],
+            default: "PENDING",
+            required: true,
+        },
+        emailAttempts: { type: Number, default: 0, required: true },
+        emailLastAttemptAt: { type: Date, default: null },
+        emailSentAt: { type: Date, default: null },
+        emailLastError: { type: String, default: null },
     },
     { timestamps: true }
 );
@@ -37,9 +49,13 @@ OrderSchema.index({ email: 1, createdAt: -1 });
 OrderSchema.index({ phone: 1, createdAt: -1 });
 OrderSchema.index({ total: 1, createdAt: -1 });
 
+// Helpful for admin retry view
+OrderSchema.index({ emailStatus: 1, emailLastAttemptAt: -1 });
+
 export type OrderDoc = InferSchemaType<typeof OrderSchema> & {
     _id: mongoose.Types.ObjectId;
     status: OrderStatus;
+    emailStatus: EmailStatus;
 };
 
 export const OrderModel =
@@ -58,5 +74,11 @@ export function toOrderDTO(o: OrderDoc): OrderDTO {
         status: o.status,
         createdAt: o.createdAt ? o.createdAt.toISOString() : null,
         updatedAt: o.updatedAt ? o.updatedAt.toISOString() : null,
+
+        emailStatus: o.emailStatus ?? "PENDING",
+        emailAttempts: typeof o.emailAttempts === "number" ? o.emailAttempts : 0,
+        emailLastAttemptAt: o.emailLastAttemptAt ? o.emailLastAttemptAt.toISOString() : null,
+        emailSentAt: o.emailSentAt ? o.emailSentAt.toISOString() : null,
+        emailLastError: o.emailLastError ?? null,
     };
 }

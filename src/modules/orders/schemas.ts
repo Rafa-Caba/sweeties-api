@@ -38,7 +38,7 @@ export const GetOrderByIdSchema = z.object({
 
 /**
  * Spring defaults:
- * page default 0, size default 10:contentReference[oaicite:4]{index=4}
+ * page default 0, size default 10
  */
 export const ListOrdersSchema = z.object({
     body: z.object({}).passthrough(),
@@ -54,8 +54,8 @@ export const SearchOrdersSchema = z.object({
     body: z.object({}).passthrough(),
     query: z.object({
         status: z.string().optional(),
-        from: z.string().optional(), // ISO date-time
-        to: z.string().optional(),   // ISO date-time
+        from: z.string().optional(),
+        to: z.string().optional(),
         minTotal: z.coerce.number().optional(),
         maxTotal: z.coerce.number().optional(),
         phone: z.string().optional(),
@@ -80,11 +80,17 @@ export const DeleteOrderSchema = z.object({
 
 export const TrackOrderSchema = z.object({
     body: z.object({
-        orderId: z.string().min(1), // Spring uses Long; Mongo uses string id
+        orderId: z.string().min(1),
         email: z.string().email(),
     }),
     query: z.object({}).passthrough(),
     params: z.object({}).passthrough(),
+});
+
+export const RetryOrderEmailsSchema = z.object({
+    body: z.object({}).passthrough(),
+    query: z.object({}).passthrough(),
+    params: z.object({ id: z.string().min(1) }),
 });
 
 export type CreateOrderBody = z.infer<typeof CreateOrderSchema>["body"];

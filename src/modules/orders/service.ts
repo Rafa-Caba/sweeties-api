@@ -24,6 +24,35 @@ function assertValidObjectId(id: string, label: string): void {
     }
 }
 
+async function attemptOrderEmails(orderId: string): Promise<void> {
+    const order = await OrderModel.findById(orderId);
+    if (!order) return;
+
+    // Mark attempt
+    order.emailAttempts = (order.emailAttempts ?? 0) + 1;
+    order.emailLastAttemptAt = new Date();
+    order.emailLastError = null;
+    await order.save();
+
+    try {
+        const dto = toOrderDTO(order as any);
+
+        await sendOrderConfirmationToGuest(dto);
+        await sendOrderConfirmationToAdmin(dto);
+
+        order.emailStatus = "SENT";
+        order.emailSentAt = new Date();
+        order.emailLastError = null;
+        await order.save();
+    } catch (e: any) {
+        order.emailStatus = "FAILED";
+        order.emailLastError = e?.message || "Unknown email error";
+        await order.save();
+
+        console.log("[MAIL] Failed to send order emails:", e);
+    }
+}
+
 export async function createOrder(dto: CreateOrderBody): Promise<OrderDTO> {
     const order = await OrderModel.create({
         name: dto.name,
@@ -33,19 +62,35 @@ export async function createOrder(dto: CreateOrderBody): Promise<OrderDTO> {
         items: dto.items,
         total: dto.total,
         status: "PENDIENTE",
+
+        emailStatus: "PENDING",
+        emailAttempts: 0,
+        emailLastAttemptAt: null,
+        emailSentAt: null,
+        emailLastError: null,
     });
 
     const saved = toOrderDTO(order as any);
 
-    // best-effort mail
-    try {
-        await sendOrderConfirmationToGuest(saved);
-        await sendOrderConfirmationToAdmin(saved);
-    } catch (e) {
-        console.log("[MAIL] Failed to send order emails:", e);
-    }
+    // best-effort mail (tracked)
+    await attemptOrderEmails(saved.id);
 
-    return saved;
+    const refreshed = await OrderModel.findById(saved.id);
+    return refreshed ? toOrderDTO(refreshed as any) : saved;
+}
+
+export async function retryOrderEmails(id: string): Promise<OrderDTO> {
+    assertValidObjectId(id, "order");
+
+    const order = await OrderModel.findById(id);
+    if (!order) throw Errors.notFound("El pedido no existe");
+
+    await attemptOrderEmails(id);
+
+    const refreshed = await OrderModel.findById(id);
+    if (!refreshed) throw Errors.notFound("El pedido no existe");
+
+    return toOrderDTO(refreshed as any);
 }
 
 export async function updateOrderStatus(id: string, status: string): Promise<OrderDTO> {
@@ -86,16 +131,12 @@ export async function getOrdersByStatus(params: {
     const status = parseStatus(params.status);
     const skip = params.page * params.size;
 
-    // invalid status => empty list (Spring behavior)
     if (params.status && !status) return [];
 
     const filter: Record<string, unknown> = {};
     if (status) filter.status = status;
 
-    const orders = await OrderModel.find(filter)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(params.size);
+    const orders = await OrderModel.find(filter).sort({ createdAt: -1 }).skip(skip).limit(params.size);
 
     return orders.map((o) => toOrderDTO(o as any));
 }
@@ -136,10 +177,7 @@ export async function filterOrders(params: {
 
     const skip = params.page * params.size;
 
-    const orders = await OrderModel.find(filter)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(params.size);
+    const orders = await OrderModel.find(filter).sort({ createdAt: -1 }).skip(skip).limit(params.size);
 
     return orders.map((o) => toOrderDTO(o as any));
 }
@@ -155,7 +193,7 @@ export async function exportOrdersAsCsv(): Promise<string> {
     const dtos = orders.map((o) => toOrderDTO(o as any));
 
     const lines: string[] = [];
-    lines.push("id,name,email,phone,total,status,createdAt,updatedAt");
+    lines.push("id,name,email,phone,total,status,emailStatus,emailAttempts,emailLastAttemptAt,emailSentAt,createdAt,updatedAt");
 
     for (const o of dtos) {
         lines.push(
@@ -166,6 +204,10 @@ export async function exportOrdersAsCsv(): Promise<string> {
                 csvEscape(o.phone),
                 csvEscape(o.total.toFixed(2)),
                 csvEscape(o.status),
+                csvEscape(o.emailStatus),
+                csvEscape(o.emailAttempts),
+                csvEscape(o.emailLastAttemptAt ?? ""),
+                csvEscape(o.emailSentAt ?? ""),
                 csvEscape(o.createdAt ?? ""),
                 csvEscape(o.updatedAt ?? ""),
             ].join(",")
@@ -185,7 +227,6 @@ export async function deleteOrder(id: string): Promise<void> {
 }
 
 export async function trackOrder(orderId: string, email: string): Promise<OrderDTO> {
-    // keep generic 404 to avoid leaking existence
     if (!mongoose.isValidObjectId(orderId)) {
         throw Errors.notFound("Pedido no encontrado o email incorrecto");
     }

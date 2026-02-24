@@ -10,14 +10,15 @@ function pickCount(map: Record<string, number>, status: string): number {
 }
 
 export async function getStats(): Promise<DashboardStatsDTO> {
-    const [userCount, itemCount, countsAgg, revenueAgg] = await Promise.all([
+    const [userCount, itemCount, countsAgg, failedEmailsCount, revenueAgg] = await Promise.all([
         UserModel.countDocuments({}),
         ItemModel.countDocuments({}),
 
         // Count orders by status in a single aggregation
-        OrderModel.aggregate<OrdersCountRow>([
-            { $group: { _id: "$status", count: { $sum: 1 } } },
-        ]),
+        OrderModel.aggregate<OrdersCountRow>([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
+
+        // Count failed emails (requires emailStatus field on Order)
+        OrderModel.countDocuments({ emailStatus: "FAILED" }),
 
         // Total revenue from all orders
         OrderModel.aggregate([{ $group: { _id: null, totalRevenue: { $sum: "$total" } } }]),
@@ -43,6 +44,8 @@ export async function getStats(): Promise<DashboardStatsDTO> {
         ordersPending,
         ordersShipped,
         ordersDelivered,
+
+        failedEmailsCount: Number(failedEmailsCount) || 0,
 
         totalRevenue,
     };
