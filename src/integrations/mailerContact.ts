@@ -16,11 +16,23 @@ function getTransporter() {
 
     if (!host || !port || !user || !pass) return null;
 
+    // return nodemailer.createTransport({
+    //     host,
+    //     port,
+    //     secure: port === 465,
+    //     auth: { user, pass },
+    // });
+
     return nodemailer.createTransport({
         host,
         port,
         secure: port === 465,
         auth: { user, pass },
+        requireTLS: port === 587,
+        tls: { servername: host },
+        connectionTimeout: 15_000,
+        greetingTimeout: 15_000,
+        socketTimeout: 20_000,
     });
 }
 
